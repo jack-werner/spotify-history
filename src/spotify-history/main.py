@@ -1,11 +1,12 @@
 """Docstring for module."""
-import os
+
 import json
+import os
 from pathlib import Path
 
+import spotipy  # type: ignore
 from dotenv import load_dotenv
-import spotipy  # noqa
-from spotipy.oauth2 import SpotifyOAuth  # noqa
+from spotipy.oauth2 import SpotifyOAuth  # type: ignore
 
 OUTPUT_LOCATION: str = "recently_played.json"
 
@@ -28,7 +29,7 @@ def main() -> None:
     )
 
     # Fetch recently played tracks
-    results = sp.current_user_recently_played(limit=20)
+    results = sp.current_user_recently_played(limit=50)
 
     with Path(OUTPUT_LOCATION).open("w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
