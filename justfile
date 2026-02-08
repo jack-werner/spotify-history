@@ -7,6 +7,9 @@ requirements:
 docker-build:
     docker build -t spotify-history .
 
+docker-run:
+    docker run --env-file .env spotify-history
+
 test:
     uv run pytest
 
