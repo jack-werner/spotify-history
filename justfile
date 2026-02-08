@@ -1,3 +1,5 @@
+set dotenv-load
+
 install: 
     uv sync --all-groups
 
@@ -12,6 +14,14 @@ docker-build:
 
 docker-run:
     docker run --env-file .env spotify-history
+
+gcp-docker-auth:
+    gcloud auth configure-docker $GCP_REGION-docker.pkg.dev
+
+docker-push:
+    docker build -t spotify-history .
+    docker tag spotify-history $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$GCP_REPO/spotify-history:latest
+    docker push $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$GCP_REPO/spotify-history:latest
 
 test:
     uv run pytest
