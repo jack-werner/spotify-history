@@ -12,6 +12,7 @@ description = "A pipeline for collecting your listening history from Spotify."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "google-cloud-storage>=2.14.0",
     "python-dotenv>=1.2.1",
     "spotipy>=2.25.2",
 ]
