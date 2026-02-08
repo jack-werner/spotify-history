@@ -208,3 +208,10 @@ __marimo__/
 
 # project specific
 recently_played.json
+
+# Terraform (infra/)
+infra/.terraform/
+infra/.terraform.lock.hcl
+infra/*.tfstate
+infra/*.tfstate.*
+infra/*.tfvars

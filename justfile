@@ -25,3 +25,13 @@ build:
 
 clean:
     rm -R dist
+
+# Terraform (infra/)
+tf-init:
+    cd infra && terraform init
+
+tf-plan:
+    cd infra && terraform plan
+
+tf-apply *ARGS:
+    cd infra && terraform apply {{ ARGS }}
