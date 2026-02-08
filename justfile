@@ -4,6 +4,9 @@ install:
 requirements:
     uv pip compile pyproject.toml -o requirements.txt
 
+add-token:
+    echo "SPOTIFY_TOKEN_JSON=$(jq -c . .cache)" >> .env
+
 docker-build:
     docker build -t spotify-history .
 
