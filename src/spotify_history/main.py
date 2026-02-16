@@ -7,6 +7,7 @@ from pathlib import Path
 
 import spotipy  # type: ignore
 from dotenv import load_dotenv
+from google.cloud import secretmanager  # type: ignore
 from google.cloud import storage  # type: ignore
 from spotipy.oauth2 import SpotifyOAuth  # type: ignore
 
@@ -20,6 +21,31 @@ logger = logging.getLogger(__name__)
 
 OUTPUT_LOCATION: str = "recently_played.json"
 RUNTIME_TOKEN_CACHE_PATH: str = "/tmp/spotify_token_cache"
+
+# When GCP_PROJECT_ID is set, these Secret Manager secret IDs are fetched and set as env vars.
+SECRET_ID_TO_ENV: dict[str, str] = {
+    "spotify-token-json": "SPOTIFY_TOKEN_JSON",
+    "spotify-client-secret": "SPOTIFY_CLIENT_SECRET",
+    "spotify-client-id": "SPOTIFY_CLIENT_ID",
+    "spotify-redirect-uri": "SPOTIFY_REDIRECT_URI",
+}
+
+
+def _load_secrets_from_gcp() -> None:
+    """If GCP_PROJECT_ID is set, load secrets from Secret Manager into os.environ."""
+    project_id = os.getenv("GCP_PROJECT_ID")
+    if not project_id:
+        return
+    client = secretmanager.SecretManagerServiceClient()
+    for secret_id, env_var in SECRET_ID_TO_ENV.items():
+        try:
+            name = f"projects/{project_id}/secrets/{secret_id}/versions/latest"
+            response = client.access_secret_version(request={"name": name})
+            value = response.payload.data.decode("utf-8")
+            os.environ[env_var] = value
+            logger.info("loaded %s from Secret Manager.", env_var)
+        except Exception as e:
+            logger.warning("could not load secret %s: %s", secret_id, e)
 
 
 def _get_cache_path() -> str:
@@ -63,8 +89,8 @@ def _write_results(results: dict) -> None:
 def main() -> None:
     """Docstring for main."""
     logger.info("loading environment variables.")  # noqa
-    # Load environment variables from .env
     load_dotenv()
+    _load_secrets_from_gcp()
 
     scope = "user-read-recently-played"
     cache_path = _get_cache_path()
@@ -72,9 +98,9 @@ def main() -> None:
     logger.info("authenticating with Spotify.")
     sp = spotipy.Spotify(
         auth_manager=SpotifyOAuth(
-            client_id=os.getenv("SPOTIPY_CLIENT_ID"),
-            client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
-            redirect_uri=os.getenv("SPOTIPY_REDIRECT_URI"),
+            client_id=os.getenv("SPOTIFY_CLIENT_ID"),
+            client_secret=os.getenv("SPOTIFY_CLIENT_SECRET"),
+            redirect_uri=os.getenv("SPOTIFY_REDIRECT_URI"),
             scope=scope,
             cache_path=cache_path,
         ),

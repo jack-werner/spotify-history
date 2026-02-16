@@ -208,6 +208,8 @@ __marimo__/
 
 # project specific
 recently_played.json
+talking_points.txt
+todo.md
 
 # Terraform (infra/)
 infra/.terraform/

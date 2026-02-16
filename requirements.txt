@@ -13,14 +13,18 @@ cryptography==46.0.4
 google-api-core==2.29.0
     # via
     #   google-cloud-core
+    #   google-cloud-secret-manager
     #   google-cloud-storage
 google-auth==2.48.0
     # via
     #   google-api-core
     #   google-cloud-core
+    #   google-cloud-secret-manager
     #   google-cloud-storage
 google-cloud-core==2.5.0
     # via google-cloud-storage
+google-cloud-secret-manager==2.26.0
+    # via spotify-history (pyproject.toml)
 google-cloud-storage==3.9.0
     # via spotify-history (pyproject.toml)
 google-crc32c==1.8.0
@@ -30,15 +34,34 @@ google-crc32c==1.8.0
 google-resumable-media==2.8.0
     # via google-cloud-storage
 googleapis-common-protos==1.72.0
+    # via
+    #   google-api-core
+    #   grpc-google-iam-v1
+    #   grpcio-status
+grpc-google-iam-v1==0.14.3
+    # via google-cloud-secret-manager
+grpcio==1.78.0
+    # via
+    #   google-api-core
+    #   google-cloud-secret-manager
+    #   googleapis-common-protos
+    #   grpc-google-iam-v1
+    #   grpcio-status
+grpcio-status==1.78.0
     # via google-api-core
 idna==3.11
     # via requests
 proto-plus==1.27.1
-    # via google-api-core
+    # via
+    #   google-api-core
+    #   google-cloud-secret-manager
 protobuf==6.33.5
     # via
     #   google-api-core
+    #   google-cloud-secret-manager
     #   googleapis-common-protos
+    #   grpc-google-iam-v1
+    #   grpcio-status
     #   proto-plus
 pyasn1==0.6.2
     # via
@@ -62,7 +85,9 @@ rsa==4.9.1
 spotipy==2.25.2
     # via spotify-history (pyproject.toml)
 typing-extensions==4.15.0
-    # via cryptography
+    # via
+    #   cryptography
+    #   grpcio
 urllib3==2.6.3
     # via
     #   requests
