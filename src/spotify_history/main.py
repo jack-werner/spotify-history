@@ -33,9 +33,10 @@ SECRET_ID_TO_ENV: dict[str, str] = {
 
 def _load_secrets_from_gcp() -> None:
     """If GCP_PROJECT_ID is set, load secrets from Secret Manager into os.environ."""
-    project_id = os.getenv("GCP_PROJECT_ID")
-    if not project_id:
-        return
+    # project_id = os.getenv("GCP_PROJECT_ID")
+    # if not project_id:
+    #     return
+    logger.info("Loading secrets from Secret Manager.")
     client = secretmanager.SecretManagerServiceClient()
     for secret_id, env_var in SECRET_ID_TO_ENV.items():
         try:
@@ -88,14 +89,14 @@ def _write_results(results: dict) -> None:
 
 def main() -> None:
     """Docstring for main."""
-    logger.info("loading environment variables.")  # noqa
+    logger.info("Loading environment variables.")  # noqa
     load_dotenv()
     _load_secrets_from_gcp()
 
     scope = "user-read-recently-played"
     cache_path = _get_cache_path()
 
-    logger.info("authenticating with Spotify.")
+    logger.info("Authenticating with Spotify.")
     sp = spotipy.Spotify(
         auth_manager=SpotifyOAuth(
             client_id=os.getenv("SPOTIFY_CLIENT_ID"),
