@@ -1,5 +1,6 @@
 """Main module for spotify-history."""
 
+import datetime
 import json
 import logging
 import os
@@ -19,8 +20,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-OUTPUT_LOCATION: str = "recently_played.json"
 RUNTIME_TOKEN_CACHE_PATH: str = "/tmp/spotify_token_cache"
+SCOPE: str = "user-read-recently-played"
 
 # When GCP_PROJECT_ID is set, these Secret Manager secret IDs are fetched and set as env vars.
 SECRET_ID_TO_ENV: dict[str, str] = {
@@ -33,9 +34,6 @@ SECRET_ID_TO_ENV: dict[str, str] = {
 
 def _load_secrets_from_gcp() -> None:
     """If GCP_PROJECT_ID is set, load secrets from Secret Manager into os.environ."""
-    # project_id = os.getenv("GCP_PROJECT_ID")
-    # if not project_id:
-    #     return
     logger.info("Loading secrets from Secret Manager.")
     client = secretmanager.SecretManagerServiceClient()
     for secret_id, env_var in SECRET_ID_TO_ENV.items():
@@ -71,48 +69,43 @@ def _get_cache_path() -> str:
     return os.getenv("SPOTIFY_TOKEN_PATH", ".cache")
 
 
-def _write_results(results: dict) -> None:
-    """Write results to local file or GCS bucket depending on GCS_BUCKET env."""
-    payload = json.dumps(results, indent=2)
-    gcs_bucket = os.getenv("GCS_BUCKET")
-    if gcs_bucket:
-        blob_name = os.getenv("GCS_OBJECT_NAME", OUTPUT_LOCATION)
-        client = storage.Client()
-        bucket = client.bucket(gcs_bucket)
-        blob = bucket.blob(blob_name)
-        blob.upload_from_string(payload, content_type="application/json")
-        logger.info("wrote recently played tracks to gs://%s/%s.", gcs_bucket, blob_name)
-    else:
-        Path(OUTPUT_LOCATION).write_text(payload, encoding="utf-8")
-        logger.info("wrote recently played tracks to %s.", OUTPUT_LOCATION)
+class SpotifyExtractor:
+    def __init__(self):
+        self.spotipy_client: spotipy.Spotify = self._authenticate_spotipy_client()
+    
+    @staticmethod
+    def _authenticate_spotipy_client() -> spotipy.Spotify:
+        logger.info("Authenticating with Spotify.")
+        return spotipy.Spotify(
+            auth_manager=SpotifyOAuth(
+                client_id=os.getenv("SPOTIFY_CLIENT_ID"),
+                client_secret=os.getenv("SPOTIFY_CLIENT_SECRET"),
+                redirect_uri=os.getenv("SPOTIFY_REDIRECT_URI"),
+                scope=SCOPE,
+                cache_path=_get_cache_path(),
+            ),
+        )
+    
+    @staticmethod
+    def _write_results(results: dict) -> None:
+        """Write results to local file."""
+        payload = json.dumps(results, indent=2)
+        now: datetime.datetime = datetime.datetime.now(datetime.timezone.utc)
+        base_path: str = os.getenv("GCS_MOUNT_PATH")
+        output_location: str = (
+            f'{base_path}/recently_played/{now.strftime("%Y-%m-%d")}/{now.strftime("%H:%M:%S")}.json'
+        )
+        if not Path(output_location).parent.exists():
+            Path(output_location).parent.mkdir(parents=True)
+        Path(output_location).write_text(payload, encoding="utf-8")
+        logger.info("Wrote recently played tracks to %s.", output_location)
 
+    def _get_recently_played_tracks(self, limit: int = 50) -> None:
+        logger.info("Fetching recently played tracks.")
+        results = self.spotipy_client.current_user_recently_played(limit=limit)
+        return results
 
-def main() -> None:
-    """Docstring for main."""
-    logger.info("Loading environment variables.")  # noqa
-    load_dotenv()
-    _load_secrets_from_gcp()
-
-    scope = "user-read-recently-played"
-    cache_path = _get_cache_path()
-
-    logger.info("Authenticating with Spotify.")
-    sp = spotipy.Spotify(
-        auth_manager=SpotifyOAuth(
-            client_id=os.getenv("SPOTIFY_CLIENT_ID"),
-            client_secret=os.getenv("SPOTIFY_CLIENT_SECRET"),
-            redirect_uri=os.getenv("SPOTIFY_REDIRECT_URI"),
-            scope=scope,
-            cache_path=cache_path,
-        ),
-    )
-
-    logger.info("fetching recently played tracks.")
-    results = sp.current_user_recently_played(limit=50)
-
-    logger.info("writing recently played tracks to file.")
-    _write_results(results)
-
-
-if __name__ == "__main__":
-    main()
+    def save_recently_played_tracks(self, limit: int = 50) -> None:
+        """Save recently played tracks to local file."""
+        results = self._get_recently_played_tracks(limit=limit)
+        self._write_results(results)

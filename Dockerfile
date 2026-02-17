@@ -5,6 +5,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/spotify_history/main.py .
+COPY src/spotify_history /app/spotify_history
 
-CMD ["python", "main.py"]
+CMD ["python", "-m", "spotify_history"]
