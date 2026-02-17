@@ -7,9 +7,9 @@ import os
 from pathlib import Path
 
 import spotipy  # type: ignore
-from dotenv import load_dotenv
-from google.cloud import secretmanager  # type: ignore
-from google.cloud import storage  # type: ignore
+from google.cloud import (
+    secretmanager,  # type: ignore
+)
 from spotipy.oauth2 import SpotifyOAuth  # type: ignore
 
 logging.basicConfig(
@@ -58,21 +58,20 @@ def _get_cache_path() -> str:
             data.setdefault("access_token", "")
             data.setdefault("expires_at", 0)
             Path(RUNTIME_TOKEN_CACHE_PATH).write_text(
-                json.dumps(data), encoding="utf-8"
+                json.dumps(data),
+                encoding="utf-8",
             )
             logger.info("using token from SPOTIFY_TOKEN_JSON (runtime).")
             return RUNTIME_TOKEN_CACHE_PATH
         except json.JSONDecodeError as e:
-            raise ValueError(
-                f"SPOTIFY_TOKEN_JSON must be valid JSON: {e}"
-            ) from e
+            raise ValueError(f"SPOTIFY_TOKEN_JSON must be valid JSON: {e}") from e
     return os.getenv("SPOTIFY_TOKEN_PATH", ".cache")
 
 
 class SpotifyExtractor:
     def __init__(self):
         self.spotipy_client: spotipy.Spotify = self._authenticate_spotipy_client()
-    
+
     @staticmethod
     def _authenticate_spotipy_client() -> spotipy.Spotify:
         logger.info("Authenticating with Spotify.")
@@ -85,16 +84,14 @@ class SpotifyExtractor:
                 cache_path=_get_cache_path(),
             ),
         )
-    
+
     @staticmethod
     def _write_results(results: dict) -> None:
         """Write results to local file."""
         payload = json.dumps(results, indent=2)
         now: datetime.datetime = datetime.datetime.now(datetime.timezone.utc)
         base_path: str = os.getenv("GCS_MOUNT_PATH")
-        output_location: str = (
-            f'{base_path}/recently_played/{now.strftime("%Y-%m-%d")}/{now.strftime("%H:%M:%S")}.json'
-        )
+        output_location: str = f"{base_path}/recently_played/{now.strftime('%Y-%m-%d')}/{now.strftime('%H:%M:%S')}.json"
         if not Path(output_location).parent.exists():
             Path(output_location).parent.mkdir(parents=True)
         Path(output_location).write_text(payload, encoding="utf-8")

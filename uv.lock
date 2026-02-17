@@ -853,7 +853,6 @@ dependencies = [
     { name = "google-cloud-secret-manager" },
     { name = "google-cloud-storage" },
     { name = "python-dotenv" },
-    { name = "ruff" },
     { name = "spotipy" },
 ]
 
@@ -871,7 +870,6 @@ requires-dist = [
     { name = "google-cloud-secret-manager", specifier = ">=2.16.0" },
     { name = "google-cloud-storage", specifier = ">=2.14.0" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
-    { name = "ruff", specifier = ">=0.14.10" },
     { name = "spotipy", specifier = ">=2.25.2" },
 ]
 

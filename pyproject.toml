@@ -15,11 +15,10 @@ dependencies = [
     "google-cloud-secret-manager>=2.16.0",
     "google-cloud-storage>=2.14.0",
     "python-dotenv>=1.2.1",
-    "ruff>=0.14.10",
     "spotipy>=2.25.2",
 ]
 authors = [
-    { name = "Jack Werner", email = "" },
+    { name = "Jack Werner", email = "jackwolfgangdj@gmail.com" },
 ]
 
 
@@ -87,7 +86,7 @@ select = [
     "D",
     "PL",
 ]
-ignore = ["E501", "D203", "D213"]
+ignore = ["E501", "D203", "D213", "COM812"]
 
 [tool.ruff.lint.flake8-import-conventions.aliases]
 "pyspark.sql.functions" = "sf"
