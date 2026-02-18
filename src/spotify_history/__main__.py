@@ -1,3 +1,5 @@
+"""Main entry point for spotify-history."""
+
 import argparse
 
 from spotify_history.etl import SpotifyExtractor
@@ -16,7 +18,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    extractor = SpotifyExtractor()
+    extractor: SpotifyExtractor = SpotifyExtractor()
     extractor.save_recently_played_tracks(limit=args.limit)
 
 
