@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Any, Iterable
 
+import polars as pl
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
@@ -94,3 +95,33 @@ class SpotifyExtractor:
             limit=limit,
         )
         self._write_results(results)
+
+
+class SpotifyCleaner:
+    """Class for cleaning recently played tracks from Spotify."""
+
+    def __init__(self) -> None:
+        """Initialize."""
+        pass
+
+    @staticmethod
+    def _read_directory_json_files(table_name: str) -> pl.LazyFrame:
+        """Read recently played tracks from directory files."""
+        file_pattern: str = f"{table_name}/*/*.json"
+        return pl.scan_ndjson(file_pattern)
+
+    def clean_recently_played_tracks(self) -> pl.DataFrame:
+        """Clean recently played tracks."""
+        table_name: str = "recently_played"
+        lazy_df: pl.LazyFrame = self._read_directory_json_files(table_name)
+        # TODO: add cleaning logic here
+        return lazy_df.collect()
+
+    def save_cleaned_recently_played_tracks(self) -> None:
+        """Save cleaned recently played tracks."""
+        df: pl.DataFrame = self.clean_recently_played_tracks()
+        base_path: str | None = os.getenv("GCS_MOUNT_PATH")
+        output_location: str = "bronze/recently_played.delta"
+        if base_path:
+            output_location = f"{base_path}/{output_location}"
+        df.write_delta(target=output_location)
