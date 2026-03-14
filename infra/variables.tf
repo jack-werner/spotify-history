@@ -29,3 +29,21 @@ variable "cloud_run_job_name" {
   type        = string
   default     = "spotify-history"
 }
+
+variable "cloud_run_image_tag" {
+  description = "Image tag for the Cloud Run job container (for rollback/pinning)."
+  type        = string
+  default     = "latest"
+}
+
+variable "cloud_run_image_digest" {
+  description = "Optional immutable image digest (sha256:...). If set, Cloud Run image uses @digest and ignores tag."
+  type        = string
+  default     = ""
+}
+
+variable "scheduler_region" {
+  description = "Region for Cloud Scheduler jobs."
+  type        = string
+  default     = "us-central1"
+}

@@ -17,11 +17,12 @@ resource "google_storage_bucket" "this" {
 
 locals {
   job_service_account = "${data.google_project.this.number}-compute@developer.gserviceaccount.com"
-  job_image           = "${var.region}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repo}/spotify-history:latest"
+  job_image_base      = "${var.region}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repo}/spotify-history"
+  job_image           = var.cloud_run_image_digest != "" ? "${local.job_image_base}@${var.cloud_run_image_digest}" : "${local.job_image_base}:${var.cloud_run_image_tag}"
   gcs_mount_path      = "/mnt/spotify-history"
 }
 
-resource "google_cloud_run_v2_job" "spotify_history" {
+resource "google_cloud_run_v2_job" "spotify_history_ingest" {
   name     = var.cloud_run_job_name
   location = var.region
   project  = var.project_id
@@ -117,7 +118,7 @@ resource "google_cloud_scheduler_job" "job" {
   description      = "test http job"
   schedule         = "*/15 * * * *"
   attempt_deadline = "320s"
-  region           = "us-central1"
+  region           = var.scheduler_region
   project          = var.project_id
 
   retry_config {
