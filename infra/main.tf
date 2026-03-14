@@ -193,3 +193,47 @@ resource "google_cloud_run_v2_job_iam_binding" "binding" {
   role     = "roles/run.invoker"
   members  = ["serviceAccount:${local.job_service_account}"]
 }
+
+# Trigger the transform job daily at 3 AM EST to build the silver Iceberg table.
+resource "google_cloud_scheduler_job" "transform" {
+  name             = "schedule-transform-job"
+  description      = "Trigger silver fct_play Iceberg table build daily at 3 AM EST."
+  schedule         = "0 3 * * *"
+  time_zone        = "America/New_York"
+  attempt_deadline = "320s"
+  region           = var.region
+  project          = var.project_id
+
+  retry_config {
+    retry_count = 1
+  }
+
+  http_target {
+    http_method = "POST"
+    uri         = "https://${google_cloud_run_v2_job.spotify_history.location}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${data.google_project.this.number}/jobs/${google_cloud_run_v2_job.spotify_history.name}:run"
+
+    headers = {
+      "Content-Type" = "application/json"
+    }
+
+    body = base64encode(jsonencode({
+      overrides = {
+        containerOverrides = [
+          {
+            args = ["transform"]
+          }
+        ]
+      }
+    }))
+
+    oauth_token {
+      service_account_email = local.job_service_account
+    }
+  }
+
+  depends_on = [
+    google_project_service.cloudscheduler_api,
+    google_cloud_run_v2_job.spotify_history,
+    google_cloud_run_v2_job_iam_binding.binding,
+  ]
+}
