@@ -4,9 +4,11 @@ import datetime
 import json
 import logging
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Iterable
 
+import duckdb
 import polars as pl
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
@@ -125,3 +127,128 @@ class SpotifyCleaner:
         if base_path:
             output_location = f"{base_path}/{output_location}"
         df.write_delta(target=output_location)
+
+
+class SpotifyTransformer:
+    """Transform raw recently played JSON into a deduplicated Iceberg table.
+
+    Reads all files from recently_played/*/*.json, unnests the items array,
+    deduplicates on played_at, and writes valid records to silver/fct_play
+    as an Iceberg table. Records missing required fields are written to
+    recently_played/failed/<date>.json.
+    """
+
+    def __init__(self) -> None:
+        """Initialize DuckDB connection and load the Iceberg extension."""
+        self.conn: duckdb.DuckDBPyConnection = duckdb.connect()
+        self.conn.execute("SET home_directory='/tmp';")
+        self.conn.execute("INSTALL iceberg; LOAD iceberg;")
+
+    @staticmethod
+    def _source_glob() -> str:
+        """Return glob pattern for all raw recently played JSON files."""
+        base = os.getenv("GCS_MOUNT_PATH", "")
+        prefix = f"{base}/" if base else ""
+        return f"{prefix}recently_played/*/*.json"
+
+    @staticmethod
+    def _silver_path() -> str:
+        """Return output path for the silver Iceberg table."""
+        base = os.getenv("GCS_MOUNT_PATH", "")
+        prefix = f"{base}/" if base else ""
+        return f"{prefix}silver/fct_play"
+
+    @staticmethod
+    def _failed_path() -> str:
+        """Return path for failed-validation records."""
+        base = os.getenv("GCS_MOUNT_PATH", "")
+        prefix = f"{base}/" if base else ""
+        now = datetime.datetime.now(datetime.timezone.utc)
+        return f"{prefix}recently_played/failed/{now.strftime('%Y-%m-%d')}.json"
+
+    def _build_views(self, source_glob: str) -> None:
+        """Build temporary DuckDB views over the raw JSON files.
+
+        Creates four views:
+        - raw_items: one row per item, unnested from the items array
+        - extracted: flat columns extracted from each item's nested structs
+        - valid_records: extracted rows with required fields present, deduplicated
+        - invalid_records: extracted rows missing any required field
+        """
+        self.conn.execute(f"""
+            CREATE OR REPLACE TEMP VIEW raw_items AS
+            SELECT unnest(items) AS item
+            FROM read_json('{source_glob}', auto_detect=true);
+        """)
+        self.conn.execute("""
+            CREATE OR REPLACE TEMP VIEW extracted AS
+            SELECT
+                TRY_CAST(item.played_at AS TIMESTAMPTZ) AS played_at,
+                item.track.id                           AS track_id,
+                item.track.name                         AS track_name,
+                item.track.uri                          AS track_uri,
+                item.track.duration_ms                  AS duration_ms,
+                item.track.explicit                     AS explicit,
+                item.track.popularity                   AS popularity,
+                item.track.album.id                     AS album_id,
+                item.track.album.name                   AS album_name,
+                item.track.album.release_date           AS album_release_date,
+                item.track.artists[1].id                AS artist_id,
+                item.track.artists[1].name              AS artist_name,
+                item.context.type                       AS context_type,
+                item.context.uri                        AS context_uri
+            FROM raw_items;
+        """)
+        self.conn.execute("""
+            CREATE OR REPLACE TEMP VIEW valid_records AS
+            SELECT DISTINCT ON (played_at) *
+            FROM extracted
+            WHERE played_at  IS NOT NULL
+              AND track_id   IS NOT NULL
+              AND track_name IS NOT NULL
+            ORDER BY played_at;
+        """)
+        self.conn.execute("""
+            CREATE OR REPLACE TEMP VIEW invalid_records AS
+            SELECT * FROM extracted
+            WHERE played_at  IS NULL
+               OR track_id   IS NULL
+               OR track_name IS NULL;
+        """)
+
+    def _write_failed(self, failed_path: str) -> None:
+        """Write invalid records to a JSON file if any exist."""
+        result = self.conn.execute(
+            "SELECT COUNT(*) FROM invalid_records"
+        ).fetchone()
+        count: int = result[0] if result else 0
+        if count == 0:
+            return
+        Path(failed_path).parent.mkdir(parents=True, exist_ok=True)
+        self.conn.execute(f"COPY invalid_records TO '{failed_path}' (FORMAT JSON);")
+        logger.info("Wrote %d failed records to %s.", count, failed_path)
+
+    def _write_silver(self, silver_path: str) -> None:
+        """Write deduplicated valid records to an Iceberg table (full refresh)."""
+        silver = Path(silver_path)
+        if silver.exists():
+            shutil.rmtree(silver_path)
+        result = self.conn.execute(
+            "SELECT COUNT(*) FROM valid_records"
+        ).fetchone()
+        count: int = result[0] if result else 0
+        self.conn.execute(
+            f"COPY (SELECT * FROM valid_records) TO '{silver_path}' (FORMAT ICEBERG);"
+        )
+        logger.info("Wrote %d records to Iceberg table at %s.", count, silver_path)
+
+    def transform(self) -> None:
+        """Read all raw JSON, deduplicate, validate, and write to Iceberg."""
+        source = self._source_glob()
+        silver = self._silver_path()
+        failed = self._failed_path()
+        logger.info("Starting transformation, reading from %s.", source)
+        self._build_views(source)
+        self._write_failed(failed)
+        self._write_silver(silver)
+        logger.info("Transformation complete.")
