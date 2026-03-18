@@ -15,6 +15,7 @@ update-spotify-token:
     jq -c . .cache | gcloud secrets versions add spotify-token-json --data-file=- --project=$GCP_PROJECT_ID
 
 docker-build:
+    @just requirements
     docker buildx build --platform linux/amd64 -t spotify-history .
 
 docker-run:

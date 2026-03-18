@@ -22,7 +22,7 @@ locals {
   gcs_mount_path      = "/mnt/spotify-history"
 }
 
-resource "google_cloud_run_v2_job" "spotify_history_ingest" {
+resource "google_cloud_run_v2_job" "spotify_history" {
   name     = var.cloud_run_job_name
   location = var.region
   project  = var.project_id
