@@ -18,12 +18,13 @@ resource "google_storage_bucket" "this" {
 locals {
   job_service_account = "${data.google_project.this.number}-compute@developer.gserviceaccount.com"
   job_image_base      = "${var.region}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repo}/spotify-history"
-  job_image           = var.cloud_run_image_digest != "" ? "${local.job_image_base}@${var.cloud_run_image_digest}" : "${local.job_image_base}:${var.cloud_run_image_tag}"
+  ingest_job_image    = var.ingest_image_digest != "" ? "${local.job_image_base}@${var.ingest_image_digest}" : "${local.job_image_base}:${var.ingest_image_tag}"
+  transform_job_image = var.transform_image_digest != "" ? "${local.job_image_base}@${var.transform_image_digest}" : "${local.job_image_base}:${var.transform_image_tag}"
   gcs_mount_path      = "/mnt/spotify-history"
 }
 
-resource "google_cloud_run_v2_job" "spotify_history" {
-  name     = var.cloud_run_job_name
+resource "google_cloud_run_v2_job" "spotify_history_ingest" {
+  name     = var.ingest_job_name
   location = var.region
   project  = var.project_id
 
@@ -40,7 +41,8 @@ resource "google_cloud_run_v2_job" "spotify_history" {
       }
 
       containers {
-        image = local.job_image
+        image = local.ingest_job_image
+        args  = ["ingest"]
 
         volume_mounts {
           name       = "gcs-bucket"
@@ -113,10 +115,102 @@ resource "google_cloud_run_v2_job" "spotify_history" {
   }
 }
 
-resource "google_cloud_scheduler_job" "job" {
-  name             = "schedule-job"
-  description      = "test http job"
-  schedule         = "*/15 * * * *"
+resource "google_cloud_run_v2_job" "spotify_history_transform" {
+  name     = var.transform_job_name
+  location = var.region
+  project  = var.project_id
+
+  template {
+    template {
+      max_retries      = 0
+      service_account  = local.job_service_account
+
+      volumes {
+        name = "gcs-bucket"
+        gcs {
+          bucket = google_storage_bucket.this.name
+        }
+      }
+
+      containers {
+        image = local.transform_job_image
+        args  = ["transform"]
+
+        volume_mounts {
+          name       = "gcs-bucket"
+          mount_path = local.gcs_mount_path
+        }
+
+        env {
+          name  = "GCP_PROJECT_ID"
+          value = var.project_id
+        }
+        env {
+          name  = "GCS_BUCKET"
+          value = google_storage_bucket.this.name
+        }
+        env {
+          name  = "GCS_MOUNT_PATH"
+          value = local.gcs_mount_path
+        }
+        env {
+          name = "SPOTIFY_TOKEN_JSON"
+          value_source {
+            secret_key_ref {
+              secret  = "projects/${var.project_id}/secrets/spotify-token-json"
+              version = "latest"
+            }
+          }
+        }
+        env {
+          name = "SPOTIFY_CLIENT_ID"
+          value_source {
+            secret_key_ref {
+              secret  = "projects/${var.project_id}/secrets/spotify-client-id"
+              version = "latest"
+            }
+          }
+        }
+        env {
+          name = "SPOTIFY_CLIENT_SECRET"
+          value_source {
+            secret_key_ref {
+              secret  = "projects/${var.project_id}/secrets/spotify-client-secret"
+              version = "latest"
+            }
+          }
+        }
+        env {
+          name = "SPOTIFY_REDIRECT_URI"
+          value_source {
+            secret_key_ref {
+              secret  = "projects/${var.project_id}/secrets/spotify-redirect-uri"
+              version = "latest"
+            }
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [
+    google_secret_manager_secret_iam_member.spotify_token_json,
+    google_secret_manager_secret_iam_member.spotify_client_id,
+    google_secret_manager_secret_iam_member.spotify_client_secret,
+    google_secret_manager_secret_iam_member.spotify_redirect_uri,
+    google_storage_bucket_iam_member.job_writer,
+    google_artifact_registry_repository_iam_member.job_puller,
+  ]
+
+  lifecycle {
+    ignore_changes = [launch_stage]
+  }
+}
+
+resource "google_cloud_scheduler_job" "ingest" {
+  name             = "schedule-ingest-job"
+  description      = "Trigger ingestion Cloud Run job."
+  schedule         = var.ingest_schedule
   attempt_deadline = "320s"
   region           = var.scheduler_region
   project          = var.project_id
@@ -127,7 +221,7 @@ resource "google_cloud_scheduler_job" "job" {
 
   http_target {
     http_method = "POST"
-    uri         = "https://${google_cloud_run_v2_job.spotify_history.location}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${data.google_project.this.number}/jobs/${google_cloud_run_v2_job.spotify_history.name}:run"
+    uri         = "https://${google_cloud_run_v2_job.spotify_history_ingest.location}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${data.google_project.this.number}/jobs/${google_cloud_run_v2_job.spotify_history_ingest.name}:run"
 
     oauth_token {
       service_account_email = local.job_service_account
@@ -136,8 +230,41 @@ resource "google_cloud_scheduler_job" "job" {
 
   depends_on = [
     google_project_service.cloudscheduler_api,
-    google_cloud_run_v2_job.spotify_history,
-    google_cloud_run_v2_job_iam_binding.binding,
+    google_cloud_run_v2_job.spotify_history_ingest,
+    google_cloud_run_v2_job_iam_binding.binding_ingest,
+  ]
+}
+
+resource "google_cloud_scheduler_job" "transform" {
+  name             = "schedule-transform-job"
+  description      = "Trigger transform Cloud Run job."
+  schedule         = var.transform_schedule
+  time_zone        = var.transform_time_zone
+  attempt_deadline = "320s"
+  region           = var.scheduler_region
+  project          = var.project_id
+
+  retry_config {
+    retry_count = 1
+  }
+
+  http_target {
+    http_method = "POST"
+    uri         = "https://${google_cloud_run_v2_job.spotify_history_transform.location}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${data.google_project.this.number}/jobs/${google_cloud_run_v2_job.spotify_history_transform.name}:run"
+
+    headers = {
+      "Content-Type" = "application/json"
+    }
+
+    oauth_token {
+      service_account_email = local.job_service_account
+    }
+  }
+
+  depends_on = [
+    google_project_service.cloudscheduler_api,
+    google_cloud_run_v2_job.spotify_history_transform,
+    google_cloud_run_v2_job_iam_binding.binding_transform,
   ]
 }
 
@@ -187,10 +314,18 @@ resource "google_artifact_registry_repository_iam_member" "job_puller" {
   member     = "serviceAccount:${local.job_service_account}"
 }
 
-resource "google_cloud_run_v2_job_iam_binding" "binding" {
+resource "google_cloud_run_v2_job_iam_binding" "binding_ingest" {
   project  = var.project_id
-  location = google_cloud_run_v2_job.spotify_history.location
-  name     = google_cloud_run_v2_job.spotify_history.name
+  location = google_cloud_run_v2_job.spotify_history_ingest.location
+  name     = google_cloud_run_v2_job.spotify_history_ingest.name
+  role     = "roles/run.invoker"
+  members  = ["serviceAccount:${local.job_service_account}"]
+}
+
+resource "google_cloud_run_v2_job_iam_binding" "binding_transform" {
+  project  = var.project_id
+  location = google_cloud_run_v2_job.spotify_history_transform.location
+  name     = google_cloud_run_v2_job.spotify_history_transform.name
   role     = "roles/run.invoker"
   members  = ["serviceAccount:${local.job_service_account}"]
 }

@@ -8,12 +8,22 @@ output "bucket_url" {
   value       = "gs://${google_storage_bucket.this.name}"
 }
 
-output "cloud_run_job_name" {
-  description = "Name of the Cloud Run job (for gcloud run jobs execute ...)."
-  value       = google_cloud_run_v2_job.spotify_history.name
+output "ingest_job_name" {
+  description = "Name of the ingestion Cloud Run job."
+  value       = google_cloud_run_v2_job.spotify_history_ingest.name
 }
 
-output "cloud_run_job_region" {
-  description = "Region of the Cloud Run job."
-  value       = google_cloud_run_v2_job.spotify_history.location
+output "ingest_job_region" {
+  description = "Region of the ingestion Cloud Run job."
+  value       = google_cloud_run_v2_job.spotify_history_ingest.location
+}
+
+output "transform_job_name" {
+  description = "Name of the transform Cloud Run job."
+  value       = google_cloud_run_v2_job.spotify_history_transform.name
+}
+
+output "transform_job_region" {
+  description = "Region of the transform Cloud Run job."
+  value       = google_cloud_run_v2_job.spotify_history_transform.location
 }
