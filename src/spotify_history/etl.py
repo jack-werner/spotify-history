@@ -71,9 +71,9 @@ class SpotifyExtractor:
         """Write results to GCS when configured, otherwise local file."""
         payload = json.dumps(results, indent=2)
         now: datetime.datetime = datetime.datetime.now(datetime.timezone.utc)
+        timestamp_with_ms: str = now.strftime("%H:%M:%S.%f")
         object_name: str = (
-            f"recently_played/{now.strftime('%Y-%m-%d')}/"
-            f"{now.strftime('%H:%M:%S')}.json"
+            f"recently_played/{now.strftime('%Y-%m-%d')}/{timestamp_with_ms}.json"
         )
         gcs_bucket: str | None = os.getenv("GCS_BUCKET")
         if gcs_bucket:
@@ -81,7 +81,9 @@ class SpotifyExtractor:
             bucket = client.bucket(gcs_bucket)
             blob = bucket.blob(object_name)
             blob.upload_from_string(payload, content_type="application/json")
-            logger.info("Wrote recently played tracks to gs://%s/%s.", gcs_bucket, object_name)
+            logger.info(
+                "Wrote recently played tracks to gs://%s/%s.", gcs_bucket, object_name
+            )
             return
 
         if not Path(object_name).parent.exists():
