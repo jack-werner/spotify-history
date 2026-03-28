@@ -51,3 +51,49 @@ To build, run
 ```
 just build
 ```
+
+## Stage-safe Cloud Run rollout
+
+The pipeline is deployed as separate Cloud Run Jobs (ingest and transform), so you can
+promote image changes to one stage without changing the other.
+
+### Why this helps
+
+- Ingest and transform use independent image pins in Terraform.
+- You can test/promote transform first, then promote ingest later.
+- Rollback is stage-specific (change one digest, re-apply).
+
+### Typical release flow
+
+1. Build and push the latest image:
+
+```
+just docker-push
+```
+
+2. Resolve the digest that was pushed:
+
+```
+just docker-digest latest
+```
+
+3. Promote only one stage using that digest:
+
+```
+just promote-transform sha256:...
+```
+
+or
+
+```
+just promote-ingest sha256:...
+```
+
+4. Run `just tf-plan` / `just tf-apply` as needed for any additional Terraform changes.
+
+### Terraform vars used for stage-safe image pinning
+
+- `ingest_image_tag` / `ingest_image_digest`
+- `transform_image_tag` / `transform_image_digest`
+
+Digest values take precedence over tags when set.

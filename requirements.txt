@@ -51,6 +51,10 @@ grpcio-status==1.78.0
     # via google-api-core
 idna==3.11
     # via requests
+polars==1.39.0
+    # via spotify-history (pyproject.toml)
+polars-runtime-32==1.39.0
+    # via polars
 proto-plus==1.27.1
     # via
     #   google-api-core

@@ -9,6 +9,7 @@ from typing import Any, Iterable
 
 import polars as pl
 import spotipy
+from google.cloud import storage
 from spotipy.oauth2 import SpotifyOAuth
 
 logging.basicConfig(
@@ -67,20 +68,28 @@ class SpotifyExtractor:
 
     @staticmethod
     def _write_results(results: Iterable[dict[str, Any]]) -> None:
-        """Write results to local file."""
+        """Write results to GCS when configured, otherwise local file."""
         payload = json.dumps(results, indent=2)
         now: datetime.datetime = datetime.datetime.now(datetime.timezone.utc)
-        base_path: str | None = os.getenv("GCS_MOUNT_PATH")
-        output_location: str = (
-            f"recently_played/{now.strftime('%Y-%m-%d')}/"
-            f"{now.strftime('%H:%M:%S')}.json"
+        timestamp_with_ms: str = now.strftime("%H:%M:%S.%f")
+        object_name: str = (
+            f"recently_played/{now.strftime('%Y-%m-%d')}/{timestamp_with_ms}.json"
         )
-        if base_path:
-            output_location = f"{base_path}/{output_location}"
-        if not Path(output_location).parent.exists():
-            Path(output_location).parent.mkdir(parents=True)
-        Path(output_location).write_text(payload, encoding="utf-8")
-        logger.info("Wrote recently played tracks to %s.", output_location)
+        gcs_bucket: str | None = os.getenv("GCS_BUCKET")
+        if gcs_bucket:
+            client = storage.Client()
+            bucket = client.bucket(gcs_bucket)
+            blob = bucket.blob(object_name)
+            blob.upload_from_string(payload, content_type="application/json")
+            logger.info(
+                "Wrote recently played tracks to gs://%s/%s.", gcs_bucket, object_name
+            )
+            return
+
+        if not Path(object_name).parent.exists():
+            Path(object_name).parent.mkdir(parents=True)
+        Path(object_name).write_text(payload, encoding="utf-8")
+        logger.info("Wrote recently played tracks to %s.", object_name)
 
     def _get_recently_played_tracks(self, limit: int = 50) -> Iterable[dict[str, Any]]:
         logger.info("Fetching recently played tracks.")

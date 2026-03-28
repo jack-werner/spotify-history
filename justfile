@@ -15,6 +15,7 @@ update-spotify-token:
     jq -c . .cache | gcloud secrets versions add spotify-token-json --data-file=- --project=$GCP_PROJECT_ID
 
 docker-build:
+    @just requirements
     docker buildx build --platform linux/amd64 -t spotify-history .
 
 docker-run:
@@ -27,6 +28,19 @@ docker-push:
     @just docker-build 
     docker tag spotify-history $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$GCP_REPO/spotify-history:latest
     docker push $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$GCP_REPO/spotify-history:latest
+
+# Resolve image digest for a given tag in Artifact Registry.
+# Example: just docker-digest latest
+docker-digest tag="latest":
+    gcloud artifacts docker images describe "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$GCP_REPO/spotify-history:{{ tag }}" --format="value(image_summary.digest)"
+
+# Promote a digest to ingestion only (stage-safe rollout).
+promote-ingest digest:
+    cd infra && terraform apply -var "ingest_image_digest={{ digest }}" -var "ingest_image_tag=latest"
+
+# Promote a digest to transform only (stage-safe rollout).
+promote-transform digest:
+    cd infra && terraform apply -var "transform_image_digest={{ digest }}" -var "transform_image_tag=latest"
 
 test:
     uv run pytest
